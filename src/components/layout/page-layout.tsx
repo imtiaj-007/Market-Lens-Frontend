@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import { Container } from '@/components/ui/container';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
+import AcceptCookies from '@/components/accept-cookies';
+import { Providers } from '@/store/provider';
 
 interface PageLayoutProps {
     children: ReactNode;
@@ -18,28 +20,29 @@ export function PageLayout({
     fullWidth = false
 }: PageLayoutProps) {
     return (
-        <div className="flex min-h-screen flex-col">
-            <Header />
+        <Providers>
+            <div className="flex min-h-screen flex-col">
+                <Header />
 
-            <motion.main
-                className={`flex-1 py-8 ${className}`}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                    duration: 0.4,
-                    ease: "easeInOut"
-                }}
-            >
-                {fullWidth ? (
-                    children
-                ) : (
-                    <Container>
-                        {children}
-                    </Container>
-                )}
-            </motion.main>
+                <motion.main
+                    className={`flex-1 py-8 ${className}`}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                        duration: 0.4,
+                        ease: "easeInOut"
+                    }}
+                >
+                    {fullWidth ? (
+                        children
+                    ) : (
+                        <Container>{children}</Container>
+                    )}
+                </motion.main>
 
-            <Footer />
-        </div>
+                <Footer />
+            </div>
+            <AcceptCookies />
+        </Providers>
     );
 } 
