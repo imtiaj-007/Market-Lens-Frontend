@@ -6,6 +6,12 @@ enum ErrorType {
     UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
 
+enum FileType {
+    CUSTOMER_DATA = "customer_data",
+    SALES_DATA = "sales_data",
+    PRODUCT_DATA = "product_data",
+}
+
 enum Theme {
     LIGHT = "light",
     DARK = "dark",
@@ -17,4 +23,4 @@ enum Language {
     EN_US = "en-US",
 }
 
-export { ErrorType, Theme, Language };
+export { ErrorType, Theme, Language, FileType };

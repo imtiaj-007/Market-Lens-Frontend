@@ -6,7 +6,7 @@ import { Container } from '@/components/ui/container';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import AcceptCookies from '@/components/accept-cookies';
-import { Providers } from '@/store/provider';
+
 
 interface PageLayoutProps {
     children: ReactNode;
@@ -20,7 +20,7 @@ export function PageLayout({
     fullWidth = false
 }: PageLayoutProps) {
     return (
-        <Providers>
+        <>
             <div className="flex min-h-screen flex-col">
                 <Header />
 
@@ -43,6 +43,6 @@ export function PageLayout({
                 <Footer />
             </div>
             <AcceptCookies />
-        </Providers>
+        </>
     );
 } 
