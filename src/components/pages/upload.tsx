@@ -1,135 +1,146 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import {
+    FileUp, Database, CheckCircle2, Info, ArrowRight,
+    Wand2, HelpCircle, CircleHelp, Sparkles, Check, CircleCheckBig,
+    CircleAlert,
+} from 'lucide-react';
+import { settings } from '@/core/config';
+import { sampleData } from '@/core/sample-data';
+import { FileType } from '@/types/enum';
+import { colorMap, fileTypes, sampleFiles } from '@/types/upload';
+import { cn, formatFileSize } from '@/lib/utils';
+import { useFile } from '@/hooks/use-file';
+
+// ShadCN UI components
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageLayout } from '@/components/layout/page-layout';
-import { uploadFile } from '@/lib/api';
-import { 
-  FileUp, Database, CheckCircle2, XCircle, FileType2, 
-  HelpCircle,  Info, ArrowRight, FileQuestion, History
-} from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Progress } from "@/components/ui/progress";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { motion } from 'framer-motion';
-import { FileSummary, FileFormatRequirement } from '@/types/upload';
+import { toast } from 'sonner';
+
+// Reusable components
+import SupportedFormats from '@/components/file-upload/supported-formats';
+import FileTips from '@/components/file-upload/file-tips';
+import UploadZone from '@/components/file-upload/upload-zone';
+import SampleDataCards from '@/components/file-upload/sample-data-cards';
+import DataQualityReport from '@/components/file-upload/data-report';
+
 
 const UploadPage: React.FC = () => {
     const router = useRouter();
-    const [file, setFile] = useState<File | null>(null);
+    const { fileIds, fileResponse, setFile, processFile } = useFile();
     const [uploading, setUploading] = useState(false);
-    const [uploadSuccess, setUploadSuccess] = useState(false);
-    const [uploadError, setUploadError] = useState<string | null>(null);
-    const [fileSummary, setFileSummary] = useState<FileSummary | null>(null);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [recentFiles, setRecentFiles] = useState([
-        { name: "sales_april.csv", date: "May 14, 2025", size: "3.2 MB" },
-        { name: "customer_data.xlsx", date: "May 10, 2025", size: "1.7 MB" }
-    ]);
-    
-    // File format requirements information
-    const fileFormatRequirements: FileFormatRequirement[] = [
-        {
-            title: "CSV Format",
-            description: "Your CSV file should include headers in the first row. Make sure all columns are properly separated by commas.",
-            example: "product_id,name,category,price,date_sold"
-        },
-        {
-            title: "Excel Format",
-            description: "Excel files should have a single sheet with data. The first row should contain column headers.",
-            example: "Sheet 1 with headers: order_id, customer_name, product, quantity, price"
-        },
-        {
-            title: "JSON Format",
-            description: "JSON files should contain an array of objects, with each object representing a row of data.",
-            example: '[{"order_id": 1001, "product": "Laptop", "price": 1299.99}]'
-        }
-    ];
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0] || null;
-        setFile(selectedFile);
+    const [files, setFiles] = useState<Record<FileType, File | null>>(() => {
+        return Object.values(FileType).reduce((acc, fileType) => {
+            acc[fileType] = null;
+            return acc;
+        }, {} as Record<FileType, File | null>);
+    });
 
-        // Reset states
-        setUploadSuccess(false);
-        setUploadError(null);
-        setFileSummary(null);
-        setUploadProgress(0);
-    };
+    const [loaders, setLoaders] = useState<Record<FileType, boolean>>(() => {
+        return Object.values(FileType).reduce((acc, fileType) => {
+            acc[fileType] = false;
+            return acc;
+        }, {} as Record<FileType, boolean>);
+    });
 
-    const handleUpload = async () => {
-        if (!file) {
-            setUploadError('Please select a file to upload');
+    const handleFileSelect = (type: FileType) => async (file: File | null) => {
+        // Check file sizes
+        if (!file || file.size > settings.MAX_FILE_SIZE) {
+            toast.error(
+                'File Size Error',
+                { description: `File size exceeds the maximum limit of ${formatFileSize(settings.MAX_FILE_SIZE)}. Please upload a smaller file.`, }
+            );
             return;
         }
-
-        // Check file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-            setUploadError('File size must be less than 5MB');
-            return;
-        }
-
-        // Check file type
-        const allowedTypes = ['text/csv', 'application/vnd.ms-excel', 'application/json', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
-        if (!allowedTypes.includes(file.type)) {
-            setUploadError('Please upload a CSV, XLS, XLSX, or JSON file');
-            return;
-        }
-
-        setUploading(true);
-        setUploadError(null);
-
-        // Simulate progress for better UX
-        const progressInterval = setInterval(() => {
-            setUploadProgress(prev => {
-                if (prev >= 90) {
-                    clearInterval(progressInterval);
-                    return 90;
-                }
-                return prev + 10;
-            });
-        }, 300);
+        setLoaders(prev => ({ ...prev, [type]: true }));
 
         try {
-            // Use the API client to upload the file
-            const response = await uploadFile(file);
+            const res = await processFile({
+                file,
+                fileType: type,
+            });
+            if (res?.data?.report?.can_process) {
+                setFile(type, file);
+                setFiles(prev => ({ ...prev, [type]: file }));
+            }
+        } catch (error) {
+            console.error('File processing error:', error);
+        } finally {
+            setLoaders(prev => ({ ...prev, [type]: false }));
+        }
+    };
 
-            // Create more detailed file summary
-            const enhancedSummary = {
-                ...response.summary,
-                fileSize: (file.size / 1024 / 1024).toFixed(2) + " MB",
-                fileType: file.type,
-                uploadDate: new Date().toLocaleDateString()
-            };
-            
-            setFileSummary(enhancedSummary);
-            clearInterval(progressInterval);
-            setUploadProgress(100);
-            setUploadSuccess(true);
+    const getUploadedFilesCount = () => {
+        return Object.values(fileIds).filter(id => id !== null).length;
+    };
 
-            // Add to recent files (in real app, this would persist)
-            setRecentFiles(prev => [
-                { 
-                    name: file.name, 
-                    date: new Date().toLocaleDateString(), 
-                    size: (file.size / 1024 / 1024).toFixed(2) + " MB" 
-                },
-                ...prev.slice(0, 4) // Keep last 5 files
-            ]);
+    const getReportsTab = useMemo(() => {
+        const reports = Object.entries(fileResponse).filter(([_, value]) => value !== null);
+        if (reports.length == 0) return null;
 
-            // Redirect to analytics page after 2 seconds
-            setTimeout(() => router.push('/analytics'), 2000);
+        return (
+            <Tabs defaultValue="sales_data">
+                <TabsList className="my-4 flex justify-between h-12 gap-2">
+                    {reports.map(([key, value]) => {
+                        const item = sampleData.Data_Quality_Tabs[key as FileType];
+                        const can_process = value?.report?.can_process;
+                        if (!item) return null;
+
+                        return (
+                            <TabsTrigger
+                                key={`${item.value}_quality`}
+                                value={item.value}
+                                className={cn(
+                                    item.className,
+                                    "lg:w-40 flex items-center gap-2 p-2 lg:p-4 rounded-lg relative",
+                                )}
+                            >
+                                {item.icon}
+                                <span className="font-medium capitalize">{item.value.replace('_', " ")}</span>
+
+                                {/* Exclamation icon in top-right corner when can't process */}
+                                {!can_process && (
+                                    <span className="absolute -top-1 -right-1 w-6 h-6 flex">
+                                        <CircleAlert className="size-6 text-red-500 m-auto" />
+                                    </span>
+                                )}
+                            </TabsTrigger>
+                        )
+                    })}
+                </TabsList>
+                {reports.map(([key, value]) => {
+                    if (value) {
+                        return (
+                            <TabsContent key={`${key}_data_quality`} value={key}>
+                                <DataQualityReport data={value} />
+                            </TabsContent>
+                        )
+                    }
+                }
+                )}
+            </Tabs>
+        )
+    }, [fileResponse]);
+
+    const handleUpload = async () => {
+        setUploading(true);
+
+        try {
+            // TODO: Upload the processed files 
+            toast.info(
+                'Uploading files... Please wait',
+                { description: 'Your data is being prepared for analysis.' }
+            )
 
         } catch (error) {
             console.error('Upload error:', error);
-            clearInterval(progressInterval);
-            setUploadProgress(0);
-            setUploadError(error instanceof Error ? error.message : 'An error occurred while uploading the file. Please try again.');
         } finally {
             setUploading(false);
         }
@@ -137,522 +148,270 @@ const UploadPage: React.FC = () => {
 
     const handleUseSampleData = (datasetName: string) => {
         setUploading(true);
-        
-        // Simulate progress
-        let progress = 0;
-        const progressInterval = setInterval(() => {
-            progress += 15;
-            if (progress >= 100) {
-                clearInterval(progressInterval);
-                progress = 100;
-            }
-            setUploadProgress(progress);
-        }, 300);
+        console.log(datasetName);
 
-        // Simulate loading sample data
         setTimeout(() => {
-            clearInterval(progressInterval);
-            setUploadProgress(100);
-            setUploadSuccess(true);
             setUploading(false);
 
-            // Show mock summary for sample data
-            setFileSummary({
-                rows: datasetName.includes("sales") ? 10248 : 5000,
-                columns: datasetName.includes("sales") ? 12 : 8,
-                column_names: datasetName.includes("sales") 
-                    ? ["date", "product_id", "product_name", "category", "price", "quantity", "customer_id", "customer_name", "country", "payment_method", "discount", "revenue"]
-                    : ["transaction_id", "date", "product", "quantity", "unit_price", "customer_id", "customer_name", "country"],
-                fileType: "Sample Dataset",
-                uploadDate: new Date().toLocaleDateString()
-            });
-
-            // Redirect to analytics page after 1.5 seconds
             setTimeout(() => router.push('/analytics'), 1500);
         }, 1800);
     };
 
     return (
-        <PageLayout>
-            <motion.div 
-                className="max-w-2xl mx-auto"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            >
-                <motion.div 
-                    className="flex flex-col gap-4"
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+        <>
+            <PageLayout>
+                <motion.div
+                    className="max-w-7xl mx-auto"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                 >
-                    <h1 className="text-3xl font-bold tracking-tight">Data Import Center</h1>
-                    <p className="text-muted-foreground">
-                        Upload your e-commerce data to start analyzing sales trends, customer behavior, and unlock actionable insights.
-                    </p>
-                </motion.div>
+                    {/* Header */}
+                    <motion.div
+                        className="text-center space-y-4 mb-8"
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.8, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/50 dark:to-purple-950/50 rounded-full border border-blue-200 dark:border-blue-800">
+                            <Database className="h-4 w-4 text-blue-600" />
+                            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Data Import</span>
+                        </div>
+                        <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                            Import Your Data
+                        </h1>
+                        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                            Upload your e-commerce data to unlock powerful analytics, discover trends, and gain actionable insights for your business.
+                        </p>
+                    </motion.div>
 
-                <motion.div 
-                    className="mt-8"
-                    initial={{ opacity: 0, y: 40 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                >
-                    <Tabs defaultValue="file-upload">
-                        <TabsList className="grid w-full grid-cols-2 mb-6">
-                            <TabsTrigger value="file-upload" className="flex items-center gap-2">
-                                <FileUp className="h-4 w-4" />
-                                File Upload
-                            </TabsTrigger>
-                            <TabsTrigger value="sample-data" className="flex items-center gap-2">
-                                <Database className="h-4 w-4" />
-                                Sample Data
-                            </TabsTrigger>
-                        </TabsList>
-                        
-                        <TabsContent value="file-upload" className="space-y-6">
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                            >
-                                <Card className="border-t-4 border-t-primary shadow-sm hover:shadow-md transition-all duration-300">
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <FileType2 className="h-5 w-5 text-primary" />
-                                            Upload your data file
-                                        </CardTitle>
-                                        <CardDescription>
-                                            Upload a CSV, Excel, or JSON file containing your e-commerce data.
-                                            Maximum file size is 5MB.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="grid gap-6">
-                                            <div className="grid gap-2">
-                                                <div className="flex items-center gap-4">
-                                                    <Input
-                                                        id="file"
-                                                        type="file"
-                                                        onChange={handleFileChange}
-                                                        accept=".csv,.xls,.xlsx,.json"
-                                                        disabled={uploading}
-                                                        className="cursor-pointer file:cursor-pointer file:transition-colors file:mr-4 file:px-4 file:bg-primary file:text-primary-foreground file:rounded-md file:border-0 file:font-medium hover:file:bg-primary/90"
-                                                    />
+                    <motion.div
+                        className="mt-8"
+                        initial={{ opacity: 0, y: 40 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                        <Tabs defaultValue="file-upload" className="space-y-6">
+                            <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto h-12">
+                                <TabsTrigger value="file-upload" className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white">
+                                    <FileUp className="h-4 w-4" />
+                                    Upload Files
+                                </TabsTrigger>
+                                <TabsTrigger value="sample-data" className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white">
+                                    <Database className="h-4 w-4" />
+                                    Sample Data
+                                </TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="file-upload" className="space-y-8">
+                                {/* Smart Upload Feature */}
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                                >
+                                    <Card className="border-t-4 border-t-cyan-300 dark:border-t-cyan-500 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30 dark:from-gray-900 dark:via-blue-950/20 dark:to-purple-950/20">
+                                        <CardHeader className="pb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500">
+                                                    <Wand2 className="h-5 w-5 text-white" />
                                                 </div>
-                                                {file && (
-                                                    <motion.p
-                                                        className="text-sm text-muted-foreground"
-                                                        initial={{ opacity: 0, height: 0 }}
-                                                        animate={{ opacity: 1, height: 'auto' }}
-                                                        transition={{ duration: 0.3 }}
+                                                <div>
+                                                    <CardTitle className="text-xl">Smart Data Upload</CardTitle>
+                                                    <CardDescription className="text-base">
+                                                        Our AI-powered system automatically maps your columns and optimizes data formats
+                                                    </CardDescription>
+                                                </div>
+                                            </div>
+                                        </CardHeader>
+
+                                        <CardContent className="space-y-6">
+                                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                                {fileTypes.map((fileType, index) => (
+                                                    <motion.div
+                                                        key={fileType.key}
+                                                        initial={{ opacity: 0, y: 20 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        transition={{ duration: 0.5, delay: index * 0.1 }}
+                                                        className="h-full"
                                                     >
-                                                        Selected file: {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                                    </motion.p>
-                                                )}
+                                                        <UploadZone
+                                                            {...fileType}
+                                                            onFileSelect={handleFileSelect(fileType.key)}
+                                                            selectedFile={files[fileType.key]}
+                                                            loading={loaders[fileType.key]}
+                                                        />
+                                                    </motion.div>
+                                                ))}
                                             </div>
 
-                                            {uploading && (
-                                                <div className="space-y-2">
-                                                    <div className="flex justify-between text-sm">
-                                                        <span>Uploading file...</span>
-                                                        <span>{uploadProgress}%</span>
-                                                    </div>
-                                                    <Progress value={uploadProgress} className="h-2" />
-                                                </div>
-                                            )}
-
-                                            {uploadError && (
+                                            {getUploadedFilesCount() > 0 && (
                                                 <motion.div
-                                                    initial={{ opacity: 0, y: 10 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                                >
-                                                    <Alert variant="destructive">
-                                                        <XCircle className="h-4 w-4" />
-                                                        <AlertTitle>Error</AlertTitle>
-                                                        <AlertDescription>{uploadError}</AlertDescription>
-                                                    </Alert>
-                                                </motion.div>
-                                            )}
-
-                                            {uploadSuccess && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: 10 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                                >
-                                                    <Alert className="border-green-500 text-green-500 bg-green-50 dark:bg-green-900/20">
-                                                        <CheckCircle2 className="h-4 w-4" />
-                                                        <AlertTitle>Success</AlertTitle>
-                                                        <AlertDescription>
-                                                            File uploaded successfully! Redirecting to dashboard...
-                                                        </AlertDescription>
-                                                    </Alert>
-                                                </motion.div>
-                                            )}
-
-                                            {fileSummary && (
-                                                <motion.div
-                                                    className="rounded-md border p-4 bg-slate-50 dark:bg-slate-900/50"
+                                                    className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20 rounded-lg border border-emerald-200 dark:border-emerald-800"
                                                     initial={{ opacity: 0, scale: 0.95 }}
                                                     animate={{ opacity: 1, scale: 1 }}
-                                                    transition={{ duration: 0.4, ease: "easeOut" }}
-                                                >
-                                                    <h3 className="font-medium mb-2 flex items-center gap-2">
-                                                        <Info className="h-4 w-4 text-primary" />
-                                                        File Summary
-                                                    </h3>
-                                                    <div className="text-sm space-y-1">
-                                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                                                            <p className="text-muted-foreground">File:</p>
-                                                            <p className="font-medium">{file?.name}</p>
-                                                            
-                                                            <p className="text-muted-foreground">Type:</p>
-                                                            <p className="font-medium">{fileSummary.fileType || file?.type}</p>
-                                                            
-                                                            <p className="text-muted-foreground">Size:</p>
-                                                            <p className="font-medium">{fileSummary.fileSize || (file ? (file.size / 1024 / 1024).toFixed(2) + " MB" : "")}</p>
-                                                            
-                                                            <p className="text-muted-foreground">Rows:</p>
-                                                            <p className="font-medium">{fileSummary.rows}</p>
-                                                            
-                                                            <p className="text-muted-foreground">Columns:</p>
-                                                            <p className="font-medium">{fileSummary.columns}</p>
-                                                        </div>
-                                                        
-                                                        <div className="mt-2 pt-2 border-t">
-                                                            <p className="text-muted-foreground">Column Names:</p>
-                                                            <p className="font-medium break-words">{fileSummary.column_names?.join(', ')}</p>
-                                                        </div>
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </div>
-                                    </CardContent>
-                                    <CardFooter>
-                                        <motion.div
-                                            className="w-full"
-                                            initial={{ opacity: 0, y: 20 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ duration: 0.5, delay: 0.2 }}
-                                        >
-                                            <Button
-                                                onClick={handleUpload}
-                                                disabled={!file || uploading}
-                                                className="w-full group"
-                                            >
-                                                {uploading ? 'Uploading...' : 'Upload and Analyze'}
-                                                {!uploading && (
-                                                    <ArrowRight className="ml-2 h-4 w-4 opacity-70 group-hover:translate-x-1 transition-transform" />
-                                                )}
-                                            </Button>
-                                        </motion.div>
-                                    </CardFooter>
-                                </Card>
-                            </motion.div>
-                            
-                            <motion.div 
-                                className="space-y-4"
-                                initial={{ opacity: 0, y: 30 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.7, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <FileQuestion className="h-4 w-4 text-primary" />
-                                    <h3 className="text-lg font-medium">File Format Requirements</h3>
-                                </div>
-                                <Accordion type="single" collapsible className="w-full">
-                                    {fileFormatRequirements.map((requirement, index) => (
-                                        <AccordionItem key={index} value={`item-${index}`}>
-                                            <AccordionTrigger className="text-sm font-medium">
-                                                {requirement.title}
-                                            </AccordionTrigger>
-                                            <AccordionContent>
-                                                <div className="text-sm space-y-2 pl-1">
-                                                    <p>{requirement.description}</p>
-                                                    <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded font-mono text-xs">
-                                                        {requirement.example}
-                                                    </div>
-                                                </div>
-                                            </AccordionContent>
-                                        </AccordionItem>
-                                    ))}
-                                </Accordion>
-                            </motion.div>
-                            
-                            {recentFiles.length > 0 && (
-                                <motion.div 
-                                    className="space-y-3"
-                                    initial={{ opacity: 0, y: 40 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.7, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <History className="h-4 w-4 text-primary" />
-                                        <h3 className="text-lg font-medium">Recently Uploaded</h3>
-                                    </div>
-                                    <div className="rounded-md border overflow-hidden">
-                                        <div className="divide-y">
-                                            {recentFiles.map((recentFile, index) => (
-                                                <div 
-                                                    key={index}
-                                                    className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors"
                                                 >
                                                     <div className="flex items-center gap-3">
-                                                        <FileType2 className="h-4 w-4 text-slate-400" />
-                                                        <div>
-                                                            <p className="text-sm font-medium">{recentFile.name}</p>
-                                                            <p className="text-xs text-muted-foreground">{recentFile.date}</p>
-                                                        </div>
+                                                        <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                                                        <span className="font-medium text-emerald-800 dark:text-emerald-200">
+                                                            {`${getUploadedFilesCount()} ${getUploadedFilesCount() === 1 ? 'file is' : 'files are'} processed successfully`}
+                                                        </span>
                                                     </div>
-                                                    <div className="text-xs text-muted-foreground">{recentFile.size}</div>
+                                                    <Button
+                                                        variant="primary"
+                                                        onClick={handleUpload}
+                                                        disabled={uploading}
+                                                    >
+                                                        {uploading ? 'Uploading...' : 'Get Analytics'}
+                                                        {!uploading && <ArrowRight className="ml-2 h-4 w-4" />}
+                                                    </Button>
+                                                </motion.div>
+                                            )}
+
+                                            {/* Processed File Reports */}
+                                            {getReportsTab}
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <Card className="bg-blue-50/30 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                                                    <CardHeader>
+                                                        <CardTitle className="text-lg flex items-center gap-2">
+                                                            <HelpCircle className="h-5 w-5 text-blue-500" />
+                                                            Common Questions
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent className="space-y-3 text-sm text-muted-foreground">
+                                                        {[
+                                                            "Missing or extra columns in your data?",
+                                                            "Unsure about your data format?",
+                                                            "Different column names than expected?"
+                                                        ].map((item, i) => (
+                                                            <div key={i} className="flex items-start gap-2">
+                                                                <CircleHelp className="size-4 mt-0.5 text-blue-400" />
+                                                                <p>{item}</p>
+                                                            </div>
+                                                        ))}
+                                                        <p className="flex items-center gap-2 font-medium text-base text-green-500 mt-4 md:mt-8">
+                                                            Don&apos;t worry - we&apos;ve got you covered!
+                                                            <CircleCheckBig className="hidden md:block size-6" />
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card className="bg-purple-50/30 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800">
+                                                    <CardHeader>
+                                                        <CardTitle className="text-lg flex items-center gap-2">
+                                                            <Sparkles className="h-5 w-5 text-purple-500" />
+                                                            AI Capabilities
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <ul className="space-y-3 text-sm text-muted-foreground">
+                                                            {[
+                                                                "Automatically detect and map columns",
+                                                                "Optimize data formats for performance",
+                                                                "Handle missing/extra columns gracefully",
+                                                                "Ensure data integrity and consistency",
+                                                                "Provide clear error messages and fixes"
+                                                            ].map((item, i) => (
+                                                                <li key={i} className="flex items-start gap-2">
+                                                                    <Check className="h-4 w-4 mt-0.5 text-purple-500" />
+                                                                    {item}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            </TabsContent>
+
+                            <TabsContent value="sample-data" className="space-y-6">
+                                <motion.div
+                                    className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                                >
+                                    {sampleData.Sample_Data_Cards.map((dataset, index) => (
+                                        <SampleDataCards
+                                            key={dataset.key}
+                                            dataset={dataset}
+                                            index={index}
+                                            uploading={uploading}
+                                            handleUseSampleData={handleUseSampleData}
+                                        />
+                                    ))}
+                                </motion.div>
+
+                                {/* Sample Data Info */}
+                                <motion.div
+                                    className="mt-8 space-y-6"
+                                    initial={{ opacity: 0, y: 30 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.7, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Info className="size-6 text-blue-600" />
+                                        <h3 className="text-lg font-semibold">Benifits of Sample Data</h3>
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <Card className="border-2 border-blue-200 dark:border-blue-800">
+                                            <CardContent className="pt-6">
+                                                <div className="space-y-4">
+                                                    <h4 className="font-semibold text-blue-900 dark:text-blue-100">Instant Analytics</h4>
+                                                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                                                        Jump straight into exploring our powerful analytics features without waiting for data preparation.
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {['Real-time dashboards', 'Trend analysis', 'Customer insights'].map((feature, i) => (
+                                                            <span key={i} className={cn(
+                                                                "px-2 py-1 text-xs font-medium rounded-xl",
+                                                                colorMap[FileType.CUSTOMER_DATA]?.background, colorMap[FileType.CUSTOMER_DATA]?.text
+                                                            )}>
+                                                                {feature}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            ))}
-                                        </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card className="border-2 border-purple-200 dark:border-purple-800">
+                                            <CardContent className="pt-6">
+                                                <div className="space-y-4">
+                                                    <h4 className="font-semibold text-purple-900 dark:text-purple-100">Learn by Example</h4>
+                                                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                                                        See how to structure your own data and discover best practices for maximum insights.
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {['Data formatting', 'Column mapping', 'Integration tips'].map((feature, i) => (
+                                                            <span key={i} className={cn(
+                                                                "px-2 py-1 text-xs font-medium rounded-xl",
+                                                                colorMap[FileType.PRODUCT_DATA]?.background, colorMap[FileType.PRODUCT_DATA]?.text
+                                                            )}>
+                                                                {feature}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
                                     </div>
                                 </motion.div>
-                            )}
-                        </TabsContent>
-                        
-                        <TabsContent value="sample-data" className="space-y-6">
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                            >
-                                <Card className="border-t-4 border-t-blue-500 shadow-sm hover:shadow-md transition-all duration-300">
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <Database className="h-5 w-5 text-blue-500" />
-                                            Use sample data
-                                        </CardTitle>
-                                        <CardDescription>
-                                            Don&apos;t have your own data? Use our sample datasets to explore the platform features.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {uploading && (
-                                            <div className="space-y-2 mb-4">
-                                                <div className="flex justify-between text-sm">
-                                                    <span>Loading sample data...</span>
-                                                    <span>{uploadProgress}%</span>
-                                                </div>
-                                                <Progress value={uploadProgress} className="h-2" />
-                                            </div>
-                                        )}
-                                        
-                                        {uploadSuccess && (
-                                            <motion.div 
-                                                className="mb-4"
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                            >
-                                                <Alert className="border-green-500 text-green-500 bg-green-50 dark:bg-green-900/20">
-                                                    <CheckCircle2 className="h-4 w-4" />
-                                                    <AlertTitle>Success</AlertTitle>
-                                                    <AlertDescription>
-                                                        Sample data loaded successfully! Redirecting to dashboard...
-                                                    </AlertDescription>
-                                                </Alert>
-                                            </motion.div>
-                                        )}
-                                        
-                                        {fileSummary && (
-                                            <motion.div
-                                                className="rounded-md border p-4 bg-slate-50 dark:bg-slate-900/50 mb-6"
-                                                initial={{ opacity: 0, scale: 0.95 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                transition={{ duration: 0.4, ease: "easeOut" }}
-                                            >
-                                                <h3 className="font-medium mb-2 flex items-center gap-2">
-                                                    <Info className="h-4 w-4 text-blue-500" />
-                                                    Dataset Summary
-                                                </h3>
-                                                <div className="text-sm space-y-1">
-                                                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                                                        <p className="text-muted-foreground">Dataset:</p>
-                                                        <p className="font-medium">{fileSummary.fileType}</p>
-                                                        
-                                                        <p className="text-muted-foreground">Rows:</p>
-                                                        <p className="font-medium">{fileSummary.rows}</p>
-                                                        
-                                                        <p className="text-muted-foreground">Columns:</p>
-                                                        <p className="font-medium">{fileSummary.columns}</p>
-                                                    </div>
-                                                    
-                                                    <div className="mt-2 pt-2 border-t">
-                                                        <p className="text-muted-foreground">Column Names:</p>
-                                                        <p className="font-medium break-words">{fileSummary.column_names?.join(', ')}</p>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                        )}
-                                        
-                                        <motion.div className="grid gap-4">
-                                            <motion.div
-                                                className="rounded-md border p-4 hover:border-blue-500 hover:shadow-sm transition-all cursor-pointer"
-                                                initial={{ opacity: 0, y: 20 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ duration: 0.5, delay: 0.2 }}
-                                                whileHover={{ translateY: -4, transition: { duration: 0.3 } }}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div className="space-y-1">
-                                                        <h3 className="font-medium">E-commerce sales data (2022-2023)</h3>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            12 months of sales data with product categories and customer information
-                                                        </p>
-                                                        <div className="mt-2 flex gap-2 text-xs">
-                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-full">10,248 rows</span>
-                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-full">12 columns</span>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        onClick={() => handleUseSampleData("sales")}
-                                                                        disabled={uploading}
-                                                                        className="bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-400"
-                                                                    >
-                                                                        {uploading ? 'Loading...' : 'Use this'}
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p className="text-xs">Load sample e-commerce sales data</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                            
-                                            <motion.div
-                                                className="rounded-md border p-4 hover:border-purple-500 hover:shadow-sm transition-all cursor-pointer"
-                                                initial={{ opacity: 0, y: 20 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ duration: 0.5, delay: 0.3 }}
-                                                whileHover={{ translateY: -4, transition: { duration: 0.3 } }}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div className="space-y-1">
-                                                        <h3 className="font-medium">Online retail transactions</h3>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            5,000 transactions from an online retailer with customer details
-                                                        </p>
-                                                        <div className="mt-2 flex gap-2 text-xs">
-                                                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 rounded-full">5,000 rows</span>
-                                                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 rounded-full">8 columns</span>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        onClick={() => handleUseSampleData("retail")}
-                                                                        disabled={uploading}
-                                                                        className="bg-purple-50 border-purple-200 text-purple-600 hover:bg-purple-100 dark:bg-purple-950 dark:border-purple-900 dark:text-purple-400"
-                                                                    >
-                                                                        {uploading ? 'Loading...' : 'Use this'}
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p className="text-xs">Load sample retail transaction data</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                            
-                                            <motion.div
-                                                className="rounded-md border p-4 hover:border-amber-500 hover:shadow-sm transition-all cursor-pointer"
-                                                initial={{ opacity: 0, y: 20 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ duration: 0.5, delay: 0.4 }}
-                                                whileHover={{ translateY: -4, transition: { duration: 0.3 } }}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div className="space-y-1">
-                                                        <h3 className="font-medium">Customer demographics & behavior</h3>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            Customer profile data with demographics and purchasing patterns
-                                                        </p>
-                                                        <div className="mt-2 flex gap-2 text-xs">
-                                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 rounded-full">3,500 rows</span>
-                                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 rounded-full">10 columns</span>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        onClick={() => handleUseSampleData("demographics")}
-                                                                        disabled={uploading}
-                                                                        className="bg-amber-50 border-amber-200 text-amber-600 hover:bg-amber-100 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-400"
-                                                                    >
-                                                                        {uploading ? 'Loading...' : 'Use this'}
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p className="text-xs">Load sample customer demographics data</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                        </motion.div>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-                            
-                            <motion.div
-                                className="space-y-4"
-                                initial={{ opacity: 0, y: 30 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.7, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <HelpCircle className="h-4 w-4 text-blue-500" />
-                                    <h3 className="text-lg font-medium">About Sample Datasets</h3>
-                                </div>
-                                <Card className="border-blue-100 dark:border-blue-900">
-                                    <CardContent className="pt-6">
-                                        <div className="space-y-4 text-sm">
-                                            <p>Our sample datasets are carefully curated to help you explore the platform&apos;s analytics capabilities without having to upload your own data first.</p>
-                                            
-                                            <div className="rounded-md bg-blue-50 dark:bg-blue-950/50 p-4 border border-blue-100 dark:border-blue-900">
-                                                <h4 className="text-blue-700 dark:text-blue-400 font-medium mb-1">Benefits of sample data:</h4>
-                                                <ul className="list-disc pl-5 space-y-1 text-blue-700/80 dark:text-blue-400/80">
-                                                    <li>Test drive all analytics features instantly</li>
-                                                    <li>Learn how to format your own data for optimal results</li>
-                                                    <li>Experiment with different visualizations</li>
-                                                    <li>Practice creating insightful reports</li>
-                                                </ul>
-                                            </div>
-                                            
-                                            <p>All sample datasets contain anonymized and synthesized data that resembles real-world e-commerce patterns. They&apos;re ready to use with all platform features.</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-                        </TabsContent>
-                    </Tabs>
-                </motion.div>                                
-            </motion.div>
-        </PageLayout>
+                            </TabsContent>
+                        </Tabs>
+                    </motion.div>
+
+                    {/* Help Section */}
+                    <FileTips />
+                    <SupportedFormats />
+
+                </motion.div>
+            </PageLayout>
+        </>
     );
 };
 

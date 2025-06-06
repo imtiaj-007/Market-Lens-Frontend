@@ -1,9 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 import cookiesReducer from '@/store/features/cookiesSlice';
+import fileReducer from '@/store/features/fileSlice';
 
 export const store = configureStore({
     reducer: {
         cookies: cookiesReducer,
+        file: fileReducer,
     },
 });
 

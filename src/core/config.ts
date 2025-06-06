@@ -7,6 +7,15 @@ class EnvironmentSettings {
     public readonly DEFAULT_PAGE_LIMIT: number = 10;
     public readonly MAX_RECONNECT_ATTEMPTS: number = 3;
     public readonly RECONNECT_DELAY: number = 5000;
+
+    // File settings
+    public readonly MAX_FILE_SIZE: number = 5 * 1024 * 1024;
+    public readonly ALLOWED_FILE_TYPES: string[] = [
+        'application/csv',
+        'application/xls',
+        'application/xlsx',
+        'application/json',
+    ];
     
     // Environment-dependent variables
     public readonly API_KEY: string;
