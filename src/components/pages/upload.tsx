@@ -12,7 +12,7 @@ import {
 import { settings } from '@/core/config';
 import { sampleData } from '@/core/sample-data';
 import { FileType } from '@/types/enum';
-import { colorMap, fileTypes, sampleFiles } from '@/types/upload';
+import { colorMap, fileTypes } from '@/types/upload';
 import { cn, formatFileSize } from '@/lib/utils';
 import { useFile } from '@/hooks/use-file';
 
@@ -29,11 +29,12 @@ import FileTips from '@/components/file-upload/file-tips';
 import UploadZone from '@/components/file-upload/upload-zone';
 import SampleDataCards from '@/components/file-upload/sample-data-cards';
 import DataQualityReport from '@/components/file-upload/data-report';
+import SessionService from '@/services/sessionService';
 
 
 const UploadPage: React.FC = () => {
     const router = useRouter();
-    const { fileIds, fileResponse, setFile, processFile } = useFile();
+    const { fileIds, fileResponse, processFile } = useFile();
     const [uploading, setUploading] = useState(false);
 
     const [files, setFiles] = useState<Record<FileType, File | null>>(() => {
@@ -64,10 +65,10 @@ const UploadPage: React.FC = () => {
         try {
             const res = await processFile({
                 file,
-                fileType: type,
+                file_type: type,
+                mime_type: file.type,
             });
             if (res?.data?.report?.can_process) {
-                setFile(type, file);
                 setFiles(prev => ({ ...prev, [type]: file }));
             }
         } catch (error) {
@@ -75,6 +76,39 @@ const UploadPage: React.FC = () => {
         } finally {
             setLoaders(prev => ({ ...prev, [type]: false }));
         }
+    };
+
+    const handleUpload = async () => {
+        setUploading(true);
+
+        try {
+            // TODO: Upload the processed files  
+            const res = await SessionService.createSession({
+                customer_data: fileIds[FileType.CUSTOMER_DATA] || null,
+                product_data: fileIds[FileType.PRODUCT_DATA] || null,
+                sales_data: fileIds[FileType.SALES_DATA] || null,
+            })           
+            toast.info(
+                'Uploading files... Please wait',
+                { description: 'Your data is being prepared for analysis.' }
+            )
+
+        } catch (error) {
+            console.error('Upload error:', error);
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleUseSampleData = (datasetName: string) => {
+        setUploading(true);
+        console.log(datasetName);
+
+        setTimeout(() => {
+            setUploading(false);
+
+            setTimeout(() => router.push('/analytics'), 1500);
+        }, 1800);
     };
 
     const getUploadedFilesCount = () => {
@@ -128,34 +162,6 @@ const UploadPage: React.FC = () => {
             </Tabs>
         )
     }, [fileResponse]);
-
-    const handleUpload = async () => {
-        setUploading(true);
-
-        try {
-            // TODO: Upload the processed files 
-            toast.info(
-                'Uploading files... Please wait',
-                { description: 'Your data is being prepared for analysis.' }
-            )
-
-        } catch (error) {
-            console.error('Upload error:', error);
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    const handleUseSampleData = (datasetName: string) => {
-        setUploading(true);
-        console.log(datasetName);
-
-        setTimeout(() => {
-            setUploading(false);
-
-            setTimeout(() => router.push('/analytics'), 1500);
-        }, 1800);
-    };
 
     return (
         <>

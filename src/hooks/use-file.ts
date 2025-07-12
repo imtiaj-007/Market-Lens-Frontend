@@ -3,9 +3,8 @@ import { useSelector, useDispatch } from 'react-redux';
 import {
     processFile as processFileAction,
 } from '@/store/features/fileThunk';
-import { setFileIds, clearFileError, resetFileState } from '@/store/features/fileSlice';
+import { clearFileError, resetFileState } from '@/store/features/fileSlice';
 import { ProcessFileRequest } from '@/types/upload';
-import { FileType } from '@/types/enum';
 
 
 export const useFile = () => {
@@ -21,10 +20,6 @@ export const useFile = () => {
         }
     };
 
-    const setFile = (fileType: FileType, file: File) => {
-        dispatch(setFileIds({fileType, file}));
-    };
-
     const clearError = () => {
         dispatch(clearFileError());
     };
@@ -35,7 +30,6 @@ export const useFile = () => {
 
     return {
         fileIds, fileResponse, loading, error,
-        processFile, setFile,
-        clearError, reset
+        processFile, clearError, reset
     };
 };

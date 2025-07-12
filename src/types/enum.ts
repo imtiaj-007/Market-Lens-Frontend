@@ -1,3 +1,14 @@
+enum Theme {
+    LIGHT = "light",
+    DARK = "dark",
+    SYSTEM = "system",
+}
+
+enum Language {
+    EN_INDIA = "en-IN",
+    EN_US = "en-US",
+}
+
 enum ErrorType {
     API_ERROR = "API_ERROR",
     NETWORK_ERROR = "NETWORK_ERROR",
@@ -12,15 +23,17 @@ enum FileType {
     PRODUCT_DATA = "product_data",
 }
 
-enum Theme {
-    LIGHT = "light",
-    DARK = "dark",
-    SYSTEM = "system",
+enum MimeType {
+    TEXT = "text/plain",
+    IMAGE = "image/*",
+    AUDIO = "audio/*",
+    VIDEO = "video/*",
+    CSV = "text/csv",
+    XML = "application/xml",
+    PDF = "application/pdf",
+    JSON = "application/json",
+    XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
-enum Language {
-    EN_INDIA = "en-IN",
-    EN_US = "en-US",
-}
-
-export { ErrorType, Theme, Language, FileType };
+export { ErrorType, Theme, Language, FileType, MimeType };
