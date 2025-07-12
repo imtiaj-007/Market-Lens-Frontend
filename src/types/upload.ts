@@ -8,10 +8,7 @@ export interface FileState {
     fileIds: Record<FileType, string | null>;
     fileResponse: Record<FileType, ReportData | null>;
     totalCount: number;
-    loading: {
-        processFile: boolean;
-        uploadFile: boolean;
-    };
+    loading: boolean;
     error: {
         processFileError: CustomError | null;
         uploadFileError: CustomError | null;
@@ -35,11 +32,12 @@ export interface FileFormatRequirement {
 
 export interface ProcessFileRequest {
     file: File;
-    fileType: FileType;
+    file_type: FileType;
+    mime_type: string;
 }
 
 export interface ProcessFileResponse extends ReportData {
-    file: string;
+    file_id: string;
 }
 
 export type ColorMap = {
