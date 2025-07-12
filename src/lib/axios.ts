@@ -15,7 +15,7 @@ const axiosInstance: AxiosInstance = axios.create({
     withCredentials: true,
     headers: {
         "Content-Type": "application/json",
-        "x-api-key": settings.API_KEY
+        // "x-api-key": settings.API_KEY
     },
 });
 
@@ -26,7 +26,7 @@ axiosInstance.interceptors.request.use(
             ...config,
             headers: config.headers || {},
         };
-        internalConfig.headers["x-api-key"] = settings.API_KEY;
+        // internalConfig.headers["x-api-key"] = settings.API_KEY;
 
         // Handle FormData and multipart requests
         if (internalConfig.data instanceof FormData) {
